@@ -1,70 +1,116 @@
-os.pullEvent = os.pullEventRaw
 local screenW, screenH = term.getSize()
-local myPassword = "password"
+os.pullEvent = os.pullEventRaw
 
-local function drawProgressBar(y, percent)
-    local width = 20
-    local filled = math.floor((percent / 100) * width)
-    term.setCursorPos(math.floor((screenW - width) / 2), y)
-    term.setTextColor(colors.white)
-    write("[")
-    term.setTextColor(colors.blue)
-    write(string.rep("=", filled))
-    term.setTextColor(colors.gray)
-    write(string.rep("-", width - filled))
-    term.setTextColor(colors.white)
-    write("] " .. percent .. "%")
-end
-
--- 1. BIOS BOOT SEQUENCE
-term.clear()
-term.setCursorPos(1, 1)
-term.setTextColor(colors.lightGray)
-print("HUTCCH CORE ARCHITECTURE v1.0")
-print("MEMORY CHECK: 512KB OK")
-sleep(0.5)
-print("MOUNTING HUTCCH.CO KERNEL...")
-for i = 0, 100, 20 do
-    drawProgressBar(5, i)
-    sleep(0.1)
-end
-
--- 2. HUTCCH.CO LOGIN SCREEN
-local authenticated = false
-while not authenticated do
+-- --- LOAD CONFIG OR RUN SETUP ---
+local config = {}
+if not fs.exists("hutcch.cfg") then
     term.setBackgroundColor(colors.black)
     term.clear()
-    
-    -- Draw Login Box
-    local centerX = math.floor(screenW / 2)
-    term.setCursorPos(centerX - 10, 5)
+    term.setCursorPos(1, 1)
     term.setTextColor(colors.blue)
-    print("      HUTCCH.CO SECURITY")
-    term.setCursorPos(centerX - 10, 6)
-    print("----------------------------")
-    
-    term.setCursorPos(centerX - 8, 8)
+    print("========================================")
+    print("    HUTCCH.CO OS v6.0 - SYS SETUP       ")
+    print("========================================")
     term.setTextColor(colors.white)
-    write("PASSWORD: ")
-    
-    -- masks the input with asterisks
-    local input = read("*")
-    
-    if input == myPassword then
-        authenticated = true
-        term.setCursorPos(centerX - 8, 10)
-        term.setTextColor(colors.green)
-        print("ACCESS GRANTED")
-        sleep(1)
+
+    if pocket then
+        print("Mobile Device Configuration:\n")
+        write("Enter your Main Command Hub ID: ")
+        config.hubID = tonumber(read())
     else
-        term.setCursorPos(centerX - 8, 10)
-        term.setTextColor(colors.red)
-        print("ACCESS DENIED")
-        -- Log failed attempt to Discord
-        shell.run("discord.lua", "alert")
-        sleep(2)
+        print("Command Hub Configuration:\n")
+        write("Set Master Password (or leave blank): ")
+        config.password = read()
+        write("Enter Discord Webhook (or leave blank): ")
+        config.webhook = read()
     end
+
+    local f = fs.open("hutcch.cfg", "w")
+    f.write(textutils.serialize(config))
+    f.close()
+
+    term.setTextColor(colors.green)
+    print("\nSetup Complete! Rebooting...")
+    sleep(1)
+else
+    local f = fs.open("hutcch.cfg", "r")
+    config = textutils.unserialize(f.readAll()) or {}
+    f.close()
 end
 
--- 3. LAUNCH THE DESKTOP
-shell.run("desktop.lua")
+-- --- KERNEL BOOT ---
+term.setBackgroundColor(colors.black)
+term.clear()
+term.setCursorPos(1, 1)
+
+if not pocket then
+    term.setTextColor(colors.lightGray)
+    local bootLogs = {
+        "Loading kernel hutcch-core-6.0.0-cc...",
+        "Probing hardware... [OK]",
+        "Mounting /dev/sda1 on /root... [OK]",
+        "Starting networking service... [OK]",
+        "Initializing Hutcch Display Manager...",
+        "Boot sequence complete."
+    }
+    for _, log in ipairs(bootLogs) do
+        print(log)
+        sleep(0.3)
+    end
+    sleep(0.5)
+end
+
+-- BOOT ROUTER
+if pocket then
+    shell.run("pocket.lua")
+else
+    -- --- LOGIN SCREEN ---
+    if config.password and config.password ~= "" then
+        local auth = false
+        while not auth do
+            term.setBackgroundColor(colors.black)
+            term.clear()
+
+            local logo = {
+                "  _    _  ",
+                " | |  | | ",
+                " | |__| | ",
+                " |  __  | ",
+                " | |  | | ",
+                " |_|  |_| "
+            }
+
+            term.setTextColor(colors.blue)
+            local startY = math.floor((screenH - #logo) / 2) - 1
+            for i, line in ipairs(logo) do
+                term.setCursorPos(math.floor((screenW - 10) / 2), startY + i)
+                print(line)
+            end
+
+            term.setTextColor(colors.lightGray)
+            local sub = "HUTCCH.CO OS v6.0"
+            term.setCursorPos(math.floor((screenW - #sub) / 2), startY + #logo + 2)
+            print(sub)
+
+            term.setCursorPos(2, screenH - 1)
+            term.setTextColor(colors.white)
+            write("hutcch login: ")
+
+            local input = read("*")
+            if input == config.password then
+                auth = true
+                term.setCursorPos(2, screenH)
+                term.setTextColor(colors.green)
+                print("Authentication successful.")
+                sleep(0.5)
+            else
+                term.setCursorPos(2, screenH)
+                term.setTextColor(colors.red)
+                print("Login incorrect")
+                shell.run("discord.lua", "alert")
+                sleep(2)
+            end
+        end
+    end
+    shell.run("desktop.lua")
+end
