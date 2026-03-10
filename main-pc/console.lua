@@ -18,7 +18,7 @@ local function drawNeofetch()
     
     term.setTextColor(colors.white)
     local statsX = 15
-    term.setCursorPos(statsX, 3) print("OS: Hutcch.co OS v6.0")
+    term.setCursorPos(statsX, 3) print("OS: Hutcch.co OS v6.1 PRO")
     term.setCursorPos(statsX, 4) print("KERNEL: H-Core 4.2.0-CC")
     term.setCursorPos(statsX, 5) print("UPTIME: " .. math.floor(os.clock()) .. "s")
     term.setCursorPos(statsX, 6) print("SHELL: hutcch-sh")
