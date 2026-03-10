@@ -2,57 +2,55 @@ local w, h = term.getSize()
 local mon = peripheral.wrap("left")
 
 local function drawDesktop()
-    term.setBackgroundColor(colors.gray)
+    term.setBackgroundColor(colors.black)
     term.clear()
 
-    -- Taskbar
-    term.setCursorPos(1, h)
-    term.setBackgroundColor(colors.blue)
-    term.clearLine()
-    term.setTextColor(colors.white)
-    term.write(" [H] HUTCCH.CO   |   TIME: " .. textutils.formatTime(os.time(), true))
-
-    -- Mining Icon
-    term.setCursorPos(4, 3)
-    term.setBackgroundColor(colors.black)
-    term.write("  [ M ]  ")
-    term.setCursorPos(4, 4)
-    term.setBackgroundColor(colors.gray)
-    term.write(" MINING  ")
-
-    -- Storage Icon
-    term.setCursorPos(16, 3)
-    term.setBackgroundColor(colors.black)
-    term.write("  [ S ]  ")
-    term.setCursorPos(16, 4)
-    term.setBackgroundColor(colors.gray)
-    term.write(" STORAGE ")
-
-    -- Discord Icon
-    term.setCursorPos(28, 3)
-    term.setBackgroundColor(colors.black)
-    term.setTextColor(colors.lightBlue)
-    term.write("  [ D ]  ")
-    term.setCursorPos(28, 4)
-    term.setBackgroundColor(colors.gray)
-    term.setTextColor(colors.white)
-    term.write(" DISCORD ")
-
-    -- Console Icon
-    term.setCursorPos(40, 3)
-    term.setBackgroundColor(colors.black)
+    --Terminal Prompt
+    term.setCursorPos(1, 1)
     term.setTextColor(colors.green)
-    term.write("  [ C ]  ")
-    term.setCursorPos(40, 4)
-    term.setBackgroundColor(colors.gray)
+    term.write("root@hutcch-os:~# ")
     term.setTextColor(colors.white)
-    term.write(" CONSOLE ")
-    
-    -- Shutdown Button
-    term.setCursorPos(w - 11, h)
-    term.setBackgroundColor(colors.red)
-    term.write(" SHUTDOWN ")
+    term.write("./start-workspace")
+
+    term.setCursorPos(1, 3)
+    term.setTextColor(colors.blue)
+    term.write("=== SYSTEM MODULES ===")
+
+    -- Mining
+    term.setCursorPos(2, 5)
+    term.setTextColor(colors.white)
+    term.write("[ M ]  MINING CORE")
+
+    -- Storage
+    term.setCursorPos(2, 6)
+    term.setTextColor(colors.white)
+    term.write("[ S ]  STORAGE ARRAY")
+
+    -- Discord
+    term.setCursorPos(2, 7)
+    term.setTextColor(colors.lightBlue)
+    term.write("[ D ]  DISCORD UPLINK")
+
+    -- Console
+    term.setCursorPos(2, 8)
+    term.setTextColor(colors.green)
+    term.write("[ C ]  ROOT CONSOLE")
+
+    -- Shutdown
+    term.setCursorPos(2, 10)
+    term.setTextColor(colors.red)
+    term.write("[ X ]  HALT SYSTEM")
+
+    -- Bottom Status Bar
+    term.setCursorPos(1, h)
+    term.setBackgroundColor(colors.gray)
+    term.setTextColor(colors.black)
+    term.clearLine()
+    term.write(" SYS: ONLINE  |  MEM: 512KB  |  v6.1 pro  | " .. textutils.formatTime(os.time(), true))
+    term.setBackgroundColor(colors.black)
 end
+
+-- APP VALIDATION
 local function safeRun(file)
     if fs.exists(file) then
         term.setBackgroundColor(colors.black)
@@ -64,7 +62,7 @@ local function safeRun(file)
         term.setBackgroundColor(colors.red)
         term.setTextColor(colors.white)
         term.clearLine()
-        term.write(" ERROR: " .. file .. " is missing or corrupted! ")
+        term.write(" ERR: Module '" .. file .. "' not found. ")
         sleep(2)
     end
 end
@@ -72,27 +70,28 @@ end
 while true do
     drawDesktop()
     local event, button, x, y = os.pullEvent("mouse_click")
-    if y == 3 or y == 4 then
-        if x >= 4 and x <= 10 then
+
+    if x >= 2 and x <= 25 then
+        if y == 5 then
             safeRun("start.lua")
-        elseif x >= 16 and x <= 22 then
-            safeRun("storage.lua") -- not a thing yet coming soon
-        elseif x >= 28 and x <= 34 then
+        elseif y == 6 then
+            safeRun("storage.lua") -- not a thing yet
+        elseif y == 7 then
             safeRun("discord.lua")
-        elseif x >= 40 and x <= 46 then
+        elseif y == 8 then
             safeRun("console.lua")
+        elseif y == 10 then
+            if mon then
+                mon.setBackgroundColor(colors.black)
+                mon.clear()
+            end
+            term.setBackgroundColor(colors.black)
+            term.clear()
+            term.setCursorPos(1,1)
+            term.setTextColor(colors.green)
+            print("root@hutcch-os:~# shutdown -h now")
+            sleep(1)
+            os.shutdown()
         end
-        
-    elseif y == h and x >= w - 11 and x <= w then
-        if mon then 
-            mon.setBackgroundColor(colors.black) 
-            mon.clear() 
-        end
-        term.setBackgroundColor(colors.black)
-        term.clear()
-        term.setCursorPos(1,1)
-        print("HUTCCH.CO: Initiating Shutdown...")
-        sleep(1)
-        os.shutdown()
     end
 end
