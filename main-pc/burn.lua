@@ -1,5 +1,5 @@
 local files = {
-    "install.lua", "startup.lua", "desktop.lua", "start.lua", 
+    "startup.lua", "desktop.lua", "start.lua", 
     "discord.lua", "console.lua"
 }
 
