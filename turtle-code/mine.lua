@@ -1,61 +1,101 @@
--- --- Configuration ---
+-- --- HUTCCH.CO v6.1 ---
 local fuelSlot = 16
 local modem = peripheral.find("modem")
-if modem then rednet.open(peripheral.getName(modem)) end
+if modem then rednet.open(peripheral.getName(modem), "mining_status") end
 
--- Position Tracking
-local pos = {x = 0, y = 27, z = 0, face = 0, fuel = 0, limit = 0}
-local isUnloading = false
+local pos = {x = 0, y = 27, z = 0, face = 0, coal = 0, startY = 27, fuel = 0, limit = 0}
+local masterID = nil
 
--- --- COMPASS SETUP ---
-if not fs.exists("pos.txt") then
-    term.clear()
-    print("--- COMPASS CALIBRATION ---")
-    print("Chest should be BEHIND turtle.")
-    print("Turtle should face MINING AREA.")
-    print("0: N | 1: E (+X) | 2: S | 3: W (-X)")
-    write("Initial Facing (Type 1 for East): ")
-    pos.face = tonumber(read()) or 1
-    local file = fs.open("pos.txt", "w")
-    file.write(textutils.serialize(pos))
-    file.close()
+-- --- ATOMIC SAVE ---
+local function save()
+    pos.fuel = tonumber(turtle.getFuelLevel()) or 0
+    pos.limit = tonumber(turtle.getFuelLimit()) or 0
+    pos.coal = tonumber(turtle.getItemCount(fuelSlot)) or 0
+
+    local f = fs.open("pos_temp.txt", "w")
+    f.write(textutils.serialize(pos))
+    f.close()
+
+    if fs.exists("pos.txt") then fs.delete("pos.txt") end
+    fs.move("pos_temp.txt", "pos.txt")
+
+    if masterID then
+        rednet.send(masterID, pos, "mining_status")
+    end
 end
 
--- Load Persistence
-local file = fs.open("pos.txt", "r")
-local data = textutils.unserialize(file.readAll())
-if data then pos = data end
-file.close()
+-- --- CALIBRATION ---
+local function calibrate()
+    term.clear()
+    term.setCursorPos(1,1)
+    term.setTextColor(colors.blue)
+    print("=== HUTCCH.CO v6.1 CALIBRATION ===")
+    term.setTextColor(colors.white)
 
-local masterID = nil
+    write("Current Y-Level: ")
+    local inputY = tonumber(read()) or 27
+    pos.y = inputY
+    pos.startY = inputY
+
+    print("\nFacing: 0:N | 1:E | 2:S | 3:W")
+    write("Select Facing (0-3): ")
+    pos.face = tonumber(read()) or 0
+
+    pos.x = 0
+    pos.z = 0
+    save()
+    print("\nREADY.")
+    sleep(1)
+end
+
+if not fs.exists("pos.txt") then calibrate() end
+
+if fs.exists("pos.txt") then
+    local f = fs.open("pos.txt", "r")
+    local data = textutils.unserialize(f.readAll())
+    if data then pos = data end
+    f.close()
+end
 if fs.exists("pair.txt") then
     local f = fs.open("pair.txt", "r")
     masterID = tonumber(f.readAll())
     f.close()
 end
 
--- new save things
-local function save()
-    pos.fuel = turtle.getFuelLevel()
-    pos.limit = turtle.getFuelLimit()
-    pos.coal = turtle.getItemCount(16) 
-    local success, err = pcall(function()
-        local f = fs.open("pos_temp.txt", "w")
-        if not f then error("Could not open temp file") end
-        f.write(textutils.serialize(pos))
-        f.close()
-        if fs.exists("pos.txt") then fs.delete("pos.txt") end
-        fs.move("pos_temp.txt", "pos.txt")
-    end)
-    if not success then
-        print("ERROR SAVING POSITION: " .. tostring(err))
+-- --- MOVEMENT ---
+local function smartMove(dir)
+    local currentFuel = tonumber(turtle.getFuelLevel()) or 0
+    if currentFuel < 300 then
+        turtle.select(fuelSlot)
+        turtle.refuel(1)
+        turtle.select(1)
     end
-    if masterID then 
-        rednet.send(masterID, pos, "mining_status") 
+
+    local success = false
+    if dir == "forward" then
+        if turtle.detect() then turtle.dig() end
+        success = turtle.forward()
+        if success then
+            if     pos.face == 0 then pos.z = pos.z - 1
+            elseif pos.face == 1 then pos.x = pos.x + 1
+            elseif pos.face == 2 then pos.z = pos.z + 1
+            elseif pos.face == 3 then pos.x = pos.x - 1
+            end
+        end
+    elseif dir == "down" then
+        if turtle.detectDown() then turtle.digDown() end
+        success = turtle.down()
+        if success then pos.y = pos.y - 1 end
+    elseif dir == "up" then
+        if turtle.detectUp() then turtle.digUp() end
+        success = turtle.up()
+        if success then pos.y = pos.y + 1 end
     end
+
+    if success then save() end
+    return success
 end
 
--- Navigation Functions
 local function turn(dir)
     if dir == "right" then
         turtle.turnRight()
@@ -67,162 +107,87 @@ local function turn(dir)
     save()
 end
 
-local function face(targetDir)
-    while pos.face ~= targetDir do turn("right") end
-end
-
-local function smartMove(dir)
-    if turtle.getFuelLevel() < 200 then
-        print("Fuel low. Refueling from slot 16...")
-        turtle.select(fuelSlot)
-        while turtle.getFuelLevel() < 1000 and turtle.getItemCount(fuelSlot) > 0 do
-            turtle.refuel(1)
-        end
-        turtle.select(1)
-        
-        if turtle.getFuelLevel() < 50 then
-            print("CRITICAL: NO FUEL IN SLOT 16")
-            if masterID then rednet.send(masterID, "Unit #"..os.getComputerID().." STUCK: NO FUEL", "mining_status") end
-        end
-    end
-
-    local success = false
-    local attempts = 0
-    while not success do
-        if dir == "forward" then
-            if turtle.detect() then turtle.dig() end
-            success = turtle.forward()
-            if success then
-                if     pos.face == 0 then pos.z = pos.z - 1
-                elseif pos.face == 1 then pos.x = pos.x + 1
-                elseif pos.face == 2 then pos.z = pos.z + 1
-                elseif pos.face == 3 then pos.x = pos.x - 1 end
-            end
-        elseif dir == "down" then
-            if turtle.detectDown() then turtle.digDown() end
-            success = turtle.down()
-            if success then pos.y = pos.y - 1 end
-        elseif dir == "up" then
-            if turtle.detectUp() then turtle.digUp() end
-            success = turtle.up()
-            if success then pos.y = pos.y + 1 end
-        end
-        
-        if not success then 
-            turtle.attack()
-            turtle.dig()   
-            attempts = attempts + 1
-            sleep(0.5) 
-            if attempts > 20 then return false end 
-        end
-    end
-    save()
-    return true
+local function face(target)
+    while pos.face ~= target do turn("right") end
 end
 
 local function goHome()
-    print("Returning to 0,0,27...")
-	if masterID then rednet.send(masterID, "Ascending to surface...", "mining_debug") end
     if pos.z > 0 then face(0) while pos.z > 0 do smartMove("forward") end
     elseif pos.z < 0 then face(2) while pos.z < 0 do smartMove("forward") end end
-    
     if pos.x > 0 then face(3) while pos.x > 0 do smartMove("forward") end
     elseif pos.x < 0 then face(1) while pos.x < 0 do smartMove("forward") end end
-    
-    while pos.y < 27 do smartMove("up") end
-end
-
-local function unloadItems()
-    if isUnloading then return end
-    isUnloading = true
-    local oldX, oldY, oldZ = pos.x, pos.y, pos.z
-    local oldFace = pos.face
-    
-    goHome()
+    while pos.y < pos.startY do smartMove("up") end
     face(3) 
-    print("Unloading to Chest...")
-	if masterID then rednet.send(masterID, "Dumping payload into chest.", "mining_debug") end
-    for i = 1, 15 do 
-        turtle.select(i)
-        turtle.drop()
-    end
+end
+
+local function unload()
+    local oldX, oldY, oldZ, oldF = pos.x, pos.y, pos.z, pos.face
+    goHome()
+    for i = 1, 15 do turtle.select(i) turtle.drop() end
     turtle.select(1)
-    
-    print("Diving back to site...")
     while pos.y > oldY do smartMove("down") end
-    if oldX > 0 then face(1) while pos.x < oldX do smartMove("forward") end end
-    if oldZ > 0 then face(2) while pos.z < oldZ do smartMove("forward") end end
-    
-    face(oldFace)
-    isUnloading = false
+    if oldX > 0 then face(1) while pos.x < oldX do smartMove("forward") end
+    elseif oldX < 0 then face(3) while pos.x > oldX do smartMove("forward") end end
+    if oldZ > 0 then face(2) while pos.z < oldZ do smartMove("forward") end
+    elseif oldZ < 0 then face(0) while pos.z > oldZ do smartMove("forward") end end
+    face(oldF)
 end
 
-local function checkInv()
-    local full = true
-    for i = 1, 15 do
-        if turtle.getItemCount(i) == 0 then full = false break end
-    end
-    if full then unloadItems() end
-end
-
+-- --- MINING LOGIC ---
 local function startMining(size, startY, targetY)
-    if pos.y > startY then
-        print("Diving to Start Layer...")
-        while pos.y > startY do smartMove("down") end
-    end
+    pos.startY = startY
+    local startFace = pos.face
+
+    while pos.y > startY do smartMove("down") end
 
     while pos.y > targetY do
-        print("Mining Layer Y: " .. pos.y)
-		if masterID then rednet.send(masterID, "Initiating Layer Y=" .. pos.y, "mining_debug") end
         for x = 1, size do
-            for z = 1, (size - 1) do 
+            for z = 1, size - 1 do
                 smartMove("forward")
-                checkInv()
-                local _, m = rednet.receive("mining_command", 0)
-                if m == "BTS" or m == "STOP" then return end
+                if turtle.getItemCount(15) > 0 then unload() end
             end
 
             if x < size then
                 if x % 2 == 1 then
-                    turn("right") smartMove("forward") checkInv() turn("right")
+                    turn("right")
+                    smartMove("forward")
+                    turn("right")
                 else
-                    turn("left") smartMove("forward") checkInv() turn("left")
+                    turn("left")
+                    smartMove("forward")
+                    turn("left")
                 end
             end
         end
-        
-        print("Layer finished. Returning to shaft...")
-        if pos.z > 0 then face(0) while pos.z > 0 do smartMove("forward") end
-        elseif pos.z < 0 then face(2) while pos.z < 0 do smartMove("forward") end end
-        if pos.x > 0 then face(3) while pos.x > 0 do smartMove("forward") end
-        elseif pos.x < 0 then face(1) while pos.x < 0 do smartMove("forward") end end
-        
-        smartMove("down")
-        face(1) 
+
+        if pos.z ~= 0 or pos.x ~= 0 then
+            if pos.z > 0 then face(0) while pos.z > 0 do smartMove("forward") end
+            elseif pos.z < 0 then face(2) while pos.z < 0 do smartMove("forward") end end
+            if pos.x > 0 then face(3) while pos.x > 0 do smartMove("forward") end
+            elseif pos.x < 0 then face(1) while pos.x < 0 do smartMove("forward") end end
+        end
+
+        if pos.y > targetY then
+            smartMove("down")
+            face(startFace)
+        end
     end
-    print("Mission Complete.")
+    goHome()
 end
+
 -- --- MAIN LOOP ---
 while true do
     save()
-    if not masterID then
-        local id, msg = rednet.receive("pair_request")
+    local id, msg, protocol = rednet.receive()
+    if protocol == "pair_request" then
         masterID = id
-        local f = fs.open("pair.txt", "w")
-        f.write(tostring(id))
-        f.close()
-    else
-        local id, msg = rednet.receive("mining_command")
-        if id == masterID then
-            if type(msg) == "table" then
-                startMining(msg.size, msg.startY, msg.depth) 
-                goHome()
-            elseif msg == "BTS" then
-                goHome()
-            elseif msg == "RESET" then
-                pos.x, pos.y, pos.z = 0, 27, 0
-                save()
-            end
+        local f = fs.open("pair.txt", "w") f.write(tostring(id)) f.close()
+        rednet.send(id, "CONNECTED", "mining_confirm")
+    elseif id == masterID and protocol == "mining_command" then
+        if type(msg) == "table" then
+            startMining(msg.size, msg.startY, msg.depth)
+        elseif msg == "RESET" then
+            calibrate()
         end
     end
 end
