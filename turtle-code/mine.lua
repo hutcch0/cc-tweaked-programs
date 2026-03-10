@@ -34,14 +34,22 @@ if fs.exists("pair.txt") then
     f.close()
 end
 
+-- new save things
 local function save()
     pos.fuel = turtle.getFuelLevel()
     pos.limit = turtle.getFuelLimit()
     pos.coal = turtle.getItemCount(16) 
-    local f = fs.open("pos.txt", "w")
-    f.write(textutils.serialize(pos))
-    f.close()
-    
+    local success, err = pcall(function()
+        local f = fs.open("pos_temp.txt", "w")
+        if not f then error("Could not open temp file") end
+        f.write(textutils.serialize(pos))
+        f.close()
+        if fs.exists("pos.txt") then fs.delete("pos.txt") end
+        fs.move("pos_temp.txt", "pos.txt")
+    end)
+    if not success then
+        print("ERROR SAVING POSITION: " .. tostring(err))
+    end
     if masterID then 
         rednet.send(masterID, pos, "mining_status") 
     end
@@ -64,7 +72,6 @@ local function face(targetDir)
 end
 
 local function smartMove(dir)
-    -- 1. Check Fuel before moving
     if turtle.getFuelLevel() < 200 then
         print("Fuel low. Refueling from slot 16...")
         turtle.select(fuelSlot)
@@ -73,7 +80,6 @@ local function smartMove(dir)
         end
         turtle.select(1)
         
-        -- If still critical, alert the Hub
         if turtle.getFuelLevel() < 50 then
             print("CRITICAL: NO FUEL IN SLOT 16")
             if masterID then rednet.send(masterID, "Unit #"..os.getComputerID().." STUCK: NO FUEL", "mining_status") end
@@ -116,6 +122,7 @@ end
 
 local function goHome()
     print("Returning to 0,0,27...")
+	if masterID then rednet.send(masterID, "Ascending to surface...", "mining_debug") end
     if pos.z > 0 then face(0) while pos.z > 0 do smartMove("forward") end
     elseif pos.z < 0 then face(2) while pos.z < 0 do smartMove("forward") end end
     
@@ -134,6 +141,7 @@ local function unloadItems()
     goHome()
     face(3) 
     print("Unloading to Chest...")
+	if masterID then rednet.send(masterID, "Dumping payload into chest.", "mining_debug") end
     for i = 1, 15 do 
         turtle.select(i)
         turtle.drop()
@@ -165,6 +173,7 @@ local function startMining(size, startY, targetY)
 
     while pos.y > targetY do
         print("Mining Layer Y: " .. pos.y)
+		if masterID then rednet.send(masterID, "Initiating Layer Y=" .. pos.y, "mining_debug") end
         for x = 1, size do
             for z = 1, (size - 1) do 
                 smartMove("forward")
@@ -193,7 +202,6 @@ local function startMining(size, startY, targetY)
     end
     print("Mission Complete.")
 end
-
 -- --- MAIN LOOP ---
 while true do
     save()
