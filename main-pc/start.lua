@@ -21,7 +21,12 @@ end
 
 -- UI
 local function drawUI()
-    if not mon then return end
+    if not mon then 
+        term.clear() term.setCursorPos(1,1)
+        print("ERROR: No Advanced Monitor detected on the left side!")
+        return 
+    end
+    
     local w, h = mon.getSize()
     mon.setBackgroundColor(bg)
     mon.clear()
@@ -31,7 +36,7 @@ local function drawUI()
     mon.setTextColor(text)
     mon.setCursorPos(1, 1)
     mon.clearLine()
-    local title = "MINING SYS OS v5.9 - CONTROL HUB" 
+    local title = "MINING SYS OS v6.0 - COMMAND HUB" 
     mon.setCursorPos(math.floor((w - #title) / 2), 1)
     mon.write(title)
 
@@ -51,39 +56,48 @@ local function drawUI()
     mon.setCursorPos(12, 4) mon.write("COORD-X")
     mon.setCursorPos(24, 4) mon.write("COORD-Y")
     mon.setCursorPos(36, 4) mon.write("COORD-Z")
-    mon.setCursorPos(48, 4) mon.write("FUEL RESERVES")
+    mon.setCursorPos(48, 4) mon.write("STATUS / FUEL")
     
     mon.setCursorPos(2, 5)
     mon.setTextColor(colors.gray)
     mon.write(string.rep("-", w - 2))
     
     local line = 6
+    local currentTime = os.clock()
+    
     for id, data in pairs(bots) do
+        local isOnline = (currentTime - (data.lastPing or 0)) < 15
+        
         mon.setCursorPos(2, line)
-        mon.setTextColor(colors.yellow)
+        if isOnline then mon.setTextColor(colors.yellow) else mon.setTextColor(colors.gray) end
         mon.write("#" .. id)
         
-        mon.setTextColor(text)
+        mon.setTextColor(isOnline and text or colors.gray)
         mon.setCursorPos(12, line) mon.write(data.x or 0)
         mon.setCursorPos(24, line) mon.write(data.y or 27)
         mon.setCursorPos(36, line) mon.write(data.z or 0)
         
-        local coalCount = data.coal or 0
-        local fuelPct = math.floor((coalCount / 64) * 100)
-        if fuelPct > 100 then fuelPct = 100 end
-        
         mon.setCursorPos(48, line)
-        if fuelPct < 20 then mon.setTextColor(colors.red) 
-        elseif fuelPct < 50 then mon.setTextColor(colors.yellow)
-        else mon.setTextColor(colors.green) end
-        
-        local bar = string.rep("|", math.floor(fuelPct/10))
-        mon.write(fuelPct .. "% (" .. coalCount .. "pcs)")
+        if not isOnline then
+            mon.setTextColor(colors.red)
+            mon.write("[ SIGNAL LOST ]")
+        else
+            -- Normal Fuel Display
+            local coalCount = data.coal or 0
+            local fuelPct = math.floor((coalCount / 64) * 100)
+            if fuelPct > 100 then fuelPct = 100 end 
+            
+            if fuelPct < 20 then mon.setTextColor(colors.red) 
+            elseif fuelPct < 50 then mon.setTextColor(colors.yellow)
+            else mon.setTextColor(colors.green) end
+            
+            local bar = string.rep("|", math.floor(fuelPct/10))
+            mon.write(fuelPct .. "% (" .. coalCount .. ")")
+        end
         
         line = line + 1
         if line > h - 6 then break end 
     end
-
     -- LIVE FEED ---
     mon.setCursorPos(2, h - 5)
     mon.setTextColor(highlight)
@@ -93,7 +107,6 @@ local function drawUI()
         mon.setCursorPos(2, (h - 5) + i)
         mon.write(log)
     end
-
     -- COMMAND BAR ---
     mon.setBackgroundColor(colors.gray)
     mon.setTextColor(colors.white)
@@ -104,35 +117,31 @@ local function drawUI()
     mon.write(controls)
     mon.setBackgroundColor(bg)
 end
-
 -- Deployment
 local function getSpecs()
     term.clear()
     term.setTextColor(colors.cyan)
     print("--- DEPLOYMENT CONFIGURATION ---")
     term.setTextColor(colors.white)
-    
     write("Hole Size (1-15): ")
     local s = tonumber(read()) or 3
-    
     write("Start at Y Level (Surface is 27): ")
     local startY = tonumber(read()) or 27
-    
     write("End at Y Level (Target): ")
     local endY = tonumber(read()) or -59
-    
     currentlyMining = true
     rednet.broadcast({size = s, startY = startY, depth = endY}, "mining_command")
     addLog("Deployed " .. s .. "x" .. s .. " | " .. startY .. " to " .. endY)
 end
-
 -- --- MAIN LOOP ---
 while true do
     drawUI()
-    local event, p1, p2, p3 = os.pullEvent()
-
+    local event, p1, p2, p3 = os.startTimer(1), nil, nil, nil
+    local evData = {os.pullEvent()}
+    event, p1, p2, p3 = evData[1], evData[2], evData[3], evData[4]
     if event == "rednet_message" then
         if p3 == "mining_status" then
+            p2.lastPing = os.clock()
             bots[p1] = p2
             if p2.y == 27 and currentlyMining then
                 currentlyMining = false
@@ -140,31 +149,29 @@ while true do
             end
         elseif p3 == "mining_confirm" then
             addLog("Unit #"..p1.." confirmed.")
-        end
-
-    elseif event == "key" then
-        if p1 == keys.p then
-            rednet.broadcast(myID, "pair_request")
-            addLog("Pairing signal sent...")
-        elseif p1 == keys.d then
-            getSpecs()
-        elseif p1 == keys.r then
-            rednet.broadcast("RESET", "mining_command")
-            addLog("System Reset sent.")
-        elseif p1 == keys.s then
-            rednet.broadcast("BTS", "mining_command")
-            addLog("BTS command sent.")
-        elseif p1 == keys.q then
-            if mon then
-                mon.setBackgroundColor(colors.black)
-                mon.clear()
+        elseif p3 == "mobile_command" then
+            if p2 == "BTS" then
+                rednet.broadcast("BTS", "mining_command")
+                addLog("Mobile: BTS Executed")
+            elseif p2 == "STOP" then
+                rednet.broadcast("STOP", "mining_command")
+                addLog("Mobile: STOP Executed")
+            elseif p2 == "DISCORD" then
+                shell.run("discord.lua", "custom", ":iphone: **Mobile Command:** Remote ping triggered.")
+                addLog("Mobile: Discord Ping")
             end
-            term.setBackgroundColor(colors.black)
-            term.clear()
-            term.setCursorPos(1,1)
+        end
+    elseif event == "key" then
+        if p1 == keys.p then rednet.broadcast(myID, "pair_request") addLog("Pairing signal sent...")
+        elseif p1 == keys.d then getSpecs()
+        elseif p1 == keys.r then rednet.broadcast("RESET", "mining_command") addLog("System Reset sent.")
+        elseif p1 == keys.s then rednet.broadcast("BTS", "mining_command") addLog("BTS command sent.")
+        elseif p1 == keys.q then
+            if mon then mon.setBackgroundColor(colors.black) mon.clear() end
+            term.setBackgroundColor(colors.black) term.clear() term.setCursorPos(1,1)
             print("Returning to Hutcch.co Desktop...")
             sleep(0.5)
-            return
+            return 
         end
     end
 end
