@@ -18,7 +18,7 @@ local function drawNeofetch()
     
     term.setTextColor(colors.white)
     local statsX = 15
-    term.setCursorPos(statsX, 3) print("OS: Hutcch.co OS v1.0")
+    term.setCursorPos(statsX, 3) print("OS: Hutcch.co OS v6.0")
     term.setCursorPos(statsX, 4) print("KERNEL: H-Core 4.2.0-CC")
     term.setCursorPos(statsX, 5) print("UPTIME: " .. math.floor(os.clock()) .. "s")
     term.setCursorPos(statsX, 6) print("SHELL: hutcch-sh")
@@ -46,12 +46,14 @@ while true do
         drawNeofetch()
         print("\n")
     elseif input == "help" then
-        print("Available: neofetch, clear, discord-ping, exit")
+        print("Available: neofetch, clear, discord-ping, burn, exit")
     elseif input == "clear" then
         term.clear()
         term.setCursorPos(1,1)
     elseif input == "discord-ping" then
         shell.run("discord.lua", "console")
+        elseif input == "burn" then
+        shell.run("burn.lua")
     elseif input == "exit" then
         return
     else
